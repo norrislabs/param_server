@@ -27,7 +27,7 @@ def get_parameter_from_db(namespace, name):
     if not dbParam.exists(param_name):
         logging.debug("{} parameter is not set.".format(param_name))
         result = {'namespace': namespace,
-                  'type': 'str',
+                  'type': 'String',
                   'name': name,
                   'value': '?',
                   'found': False}
@@ -102,13 +102,13 @@ def put_parameter_in_db(namespace, nodename, value_type, name, value, publish_ch
         queue.put_nowait(param_entry)
 
 
-def load_parameter_from_xml(element: ET.Element):
+def load_parameter_from_xml(element: ET.Element, publish_change):
     put_parameter_in_db(element.attrib['ns'], "default",
                         element.attrib['type'], element.attrib['name'], element.attrib['value'],
-                        publish_change=False)
+                        publish_change=publish_change)
 
 
-def load_parameters_from_file(filename, namespace):
+def load_parameters_from_file(filename, namespace, publish_change):
     try:
         tree = ET.parse("parameters/" + filename)
 
@@ -117,7 +117,7 @@ def load_parameters_from_file(filename, namespace):
         for child in root:
             if child.tag == "parameter":
                 if namespace == '@' or namespace == child.attrib['ns']:
-                    load_parameter_from_xml(child)
+                    load_parameter_from_xml(child, publish_change)
 
         logging.info("Loaded parameters file named '{}'.".format(args['parameters']))
         return True
@@ -189,7 +189,7 @@ def parameter_cb(_request_topic, message: b9py.Message):
 
     # Load parameter db from an XML file
     elif message.data['cmd'].lower() == 'load':
-        load_parameters_from_file(message.data['filename'], message.data['namespace'])
+        load_parameters_from_file(message.data['filename'], message.data['namespace'], message.data['publish_change'])
 
     return msg
 
@@ -230,6 +230,7 @@ if __name__ == "__main__":
     ap.add_argument("-s", "--namespace", type=str, default="", help="parameter service namespace")
     ap.add_argument("-t", "--topic", type=str, default="parameters", help="parameter service topic")
     ap.add_argument('-p', '--parameters', default="default.parm", help="default parameters file name")
+    ap.add_argument('-c', '--publish_change', default=True, help="create change publishers")
     args = vars(ap.parse_args())
 
     b9 = b9py.B9(args['nodename'])
@@ -247,7 +248,7 @@ if __name__ == "__main__":
         logging.error("Unable to start parameter service node. {}".format(stat.status_type))
 
     # Load default parameters into db
-    load_parameters_from_file(args['parameters'], '@')
+    load_parameters_from_file(args['parameters'], '@', args['publish_change'])
 
     while b9.spin_once(1.0 / QMAX):
         process_changes()
